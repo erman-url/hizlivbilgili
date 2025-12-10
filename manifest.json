@@ -1,0 +1,11 @@
+{
+  "name": "Capybara Jump",
+  "short_name": "CapyJump",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#111",
+  "theme_color": "#0b132b",
+  "icons": [
+    { "src": "player.png", "sizes": "192x192", "type": "image/png" }
+  ]
+}

@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Capybara Jump</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body {
+    margin:0;
+    background:#111;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+}
+canvas { max-width:100%; }
+</style>
+</head>
+<body>
+
+<canvas id="game" width="1000" height="400"></canvas>
+
+<script>
+// ================= CANVAS =================
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+// ================= STATE =================
+let speed = 7;
+let gravity = 0.6;
+let score = 0;
+let frame = 0;
+let gameOver = false;
+
+// ================= PLAYER =================
+const SCALE = 1.55;
+const groundY = 220 - (90 * (SCALE - 1));
+
+const player = {
+    x: 100,
+    y: groundY,
+    w: 80 * SCALE,
+    h: 100 * SCALE,
+    vy: 0,
+    jumping: false,
+    img: new Image()
+};
+player.img.src = "player.png";
+
+// ================= LIVES =================
+let lives = 5;
+const MAX_LIVES = 7;
+let invincible = false;
+let invTimer = 0;
+
+// ================= AUDIO =================
+const jumpSound = new Audio("jump.wav");
+const hitSound = new Audio("hit.wav");
+
+// ================= IMAGES =================
+const capyImg = new Image(); capyImg.src = "capybara.png";
+const hedgehogImg = new Image(); hedgehogImg.src = "hedgehog.png";
+const appleImg = new Image(); appleImg.src = "apple.png";
+const bombImg = new Image(); bombImg.src = "bomb.png";
+const mushroomImg = new Image(); mushroomImg.src = "mushroom.png";
+
+// ================= WEATHER =================
+let storm = false;
+let clouds = [];
+let rain = [];
+
+function spawnCloud() {
+    clouds.push({
+        x: canvas.width,
+        y: Math.random()*120+20,
+        w: Math.random()*80+60,
+        speed: Math.random()*0.5+0.3
+    });
+}
+function spawnRain() {
+    rain.push({
+        x: Math.random()*canvas.width,
+        y: -10,
+        len: Math.random()*15+10,
+        speed: Math.random()*4+4
+    });
+}
+
+// ================= ENEMIES =================
+let enemies = [];
+let passedEnemies = 0;
+
+function spawnEnemy() {
+    const type = Math.random() < 1.0 ? "capybara" : "hedgehog";
+    enemies.push({
+        type,
+        x: canvas.width,
+        y: type==="hedgehog"?250:240,
+        w: type==="hedgehog"?50:70,
+        h: type==="hedgehog"?40:60,
+        passed:false
+    });
+}
+
+// ================= APPLES =================
+let apples = [];
+function spawnApple() {
+    apples.push({ x: canvas.width, y: 240, w: 35, h: 35 });
+}
+
+// ================= BOMB & SHOOT =================
+let bombSpawned = false;
+let canShoot = false;
+let ammo = 0;
+let bullets = [];
+
+function spawnBomb() {
+    if (bombSpawned) return;
+    bombSpawned = true;
+    items.push({ type:"bomb", x:canvas.width, y:230, w:35, h:35 });
+}
+
+// ================= ITEMS =================
+let items = [];
+
+// ================= MUSHROOM ENEMY =================
+let mushroom = null;
+let mushroomShot = false;
+let mushroomBullets = [];
+
+// ================= CONTROLS =================
+function jump() {
+    if (!player.jumping && !gameOver) {
+        player.vy = -13;
+        player.jumping = true;
+        jumpSound.currentTime = 0;
+        jumpSound.play();
+    }
+}
+function shoot() {
+    if (!canShoot || ammo<=0 || gameOver) return;
+    bullets.push({
+        x: player.x + player.w,
+        y: player.y + player.h/2,
+        w: 10, h: 4, speed: 10
+    });
+    ammo--;
+}
+document.addEventListener("keydown", e=>{
+    if (e.code==="Space") jump();
+    if (e.code==="KeyF") shoot();
+    if (e.code==="KeyR" && gameOver) location.reload();
+});
+canvas.addEventListener("click", jump);
+canvas.addEventListener("touchstart", jump);
+
+// ================= UPDATE =================
+function update() {
+    if (gameOver) return;
+    frame++; score++;
+
+    if (score>2000) storm=true;
+    if (frame%180===0) spawnCloud();
+    if (storm && frame%2===0) spawnRain();
+    if (frame%120===0) spawnEnemy();
+    if (frame%1400===0) spawnApple();
+    if (score>3000 && !bombSpawned) spawnBomb();
+
+    // WEATHER
+    clouds.forEach(c=>c.x-=c.speed);
+    clouds=clouds.filter(c=>c.x+c.w>0);
+    rain.forEach(r=>r.y+=r.speed);
+    rain=rain.filter(r=>r.y<canvas.height);
+
+    // PLAYER
+    player.vy+=gravity;
+    player.y+=player.vy;
+    if (player.y>=groundY) {
+        player.y=groundY;
+        player.vy=0;
+        player.jumping=false;
+    }
+
+    // ENEMIES
+    enemies.forEach(e=>{
+        e.x -= e.type==="hedgehog"?speed*1.6:speed;
+        if (!e.passed && e.x+e.w<player.x) {
+            e.passed=true;
+            passedEnemies++;
+        }
+    });
+    enemies=enemies.filter(e=>e.x+e.w>0);
+
+    // MUSHROOM SPAWN
+    if (passedEnemies>=15 && !mushroom) {
+        mushroom={
+            x: canvas.width-200,
+            y: 230,
+            w: 80,
+            h: 80,
+            hp: 2
+        };
+        mushroomShot=false;
+    }
+
+    // MUSHROOM SHOOT
+    if (mushroom && !mushroomShot) {
+        mushroomShot=true;
+        mushroomBullets.push({
+            x: mushroom.x,
+            y: mushroom.y+mushroom.h/2,
+            w: 12, h: 6, speed: -8
+        });
+    }
+
+    mushroomBullets.forEach(b=>b.x+=b.speed);
+    mushroomBullets=mushroomBullets.filter(b=>b.x+b.w>0);
+
+    mushroomBullets.forEach((b,i)=>{
+        if (player.x<b.x+b.w && player.x+player.w>b.x &&
+            player.y<b.y+b.h && player.y+player.h>b.y) {
+            mushroomBullets.splice(i,1);
+            lives--;
+            invincible=true;
+            invTimer=60;
+            if (lives<=0) gameOver=true;
+        }
+    });
+
+    // APPLES
+    apples.forEach(a=>a.x-=speed);
+    apples=apples.filter(a=>a.x+a.w>0);
+    apples.forEach((a,i)=>{
+        if (player.x<a.x+a.w && player.x+player.w>a.x &&
+            player.y<a.y+a.h && player.y+player.h>a.y) {
+            if (lives<MAX_LIVES) lives++;
+            apples.splice(i,1);
+        }
+    });
+
+    // ITEMS
+    items.forEach(i=>i.x-=speed);
+    items.forEach((i,idx)=>{
+        if (player.x<i.x+i.w && player.x+player.w>i.x &&
+            player.y<i.y+i.h && player.y+player.h>i.y) {
+            if (i.type==="bomb") { canShoot=true; ammo=50; }
+            items.splice(idx,1);
+        }
+    });
+
+    // BULLETS
+    bullets.forEach(b=>b.x+=b.speed);
+    bullets=bullets.filter(b=>b.x<canvas.width);
+
+    bullets.forEach((b,bi)=>{
+        enemies.forEach((e,ei)=>{
+            if (b.x<e.x+e.w && b.x+b.w>e.x &&
+                b.y<e.y+e.h && b.y+b.h>e.y) {
+                bullets.splice(bi,1);
+                enemies.splice(ei,1);
+                score+=150;
+            }
+        });
+        if (mushroom &&
+            b.x<mushroom.x+mushroom.w &&
+            b.x+b.w>mushroom.x &&
+            b.y<mushroom.y+mushroom.h &&
+            b.y+b.h>mushroom.y) {
+            bullets.splice(bi,1);
+            mushroom.hp--;
+            if (mushroom.hp<=0) {
+                mushroom=null;
+                mushroomBullets=[];
+                score+=800;
+            }
+        }
+    });
+
+    // COLLISION
+    if (invincible) { invTimer--; if(invTimer<=0) invincible=false; }
+    enemies.forEach(e=>{
+        if (invincible) return;
+        const p={x:player.x+20,y:player.y+15,w:player.w-40,h:player.h-30};
+        const h={x:e.x+8,y:e.y+8,w:e.w-16,h:e.h-16};
+        if (p.x<h.x+h.w && p.x+p.w>h.x && p.y<h.y+h.h && p.y+p.h>h.y) {
+            lives--;
+            invincible=true;
+            invTimer=60;
+            hitSound.play();
+            enemies=[];
+            if (lives<=0) gameOver=true;
+        }
+    });
+
+    if (score%600===0) speed+=0.4;
+}
+
+// ================= DRAW =================
+function draw() {
+    ctx.fillStyle=storm?"#1c2331":"#87ceeb";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    ctx.fillStyle="rgba(255,255,255,0.8)";
+    clouds.forEach(c=>{
+        ctx.beginPath();
+        ctx.ellipse(c.x,c.y,c.w/2,20,0,0,Math.PI*2);
+        ctx.fill();
+    });
+
+    if (storm) {
+        ctx.strokeStyle="rgba(200,200,255,0.6)";
+        rain.forEach(r=>{
+            ctx.beginPath();
+            ctx.moveTo(r.x,r.y);
+            ctx.lineTo(r.x,r.y+r.len);
+            ctx.stroke();
+        });
+    }
+
+    ctx.fillStyle="#4caf50";
+    ctx.fillRect(0,300,canvas.width,50);
+
+    if (!invincible || frame%10<5)
+        ctx.drawImage(player.img,player.x,player.y,player.w,player.h);
+
+    enemies.forEach(e=>{
+        ctx.drawImage(e.type==="hedgehog"?hedgehogImg:capyImg,e.x,e.y,e.w,e.h);
+    });
+
+    if (mushroom)
+        ctx.drawImage(mushroomImg,mushroom.x,mushroom.y,mushroom.w,mushroom.h);
+
+    ctx.fillStyle="red";
+    mushroomBullets.forEach(b=>{
+        ctx.fillRect(b.x,b.y,b.w,b.h);
+    });
+
+    apples.forEach(a=>{
+        ctx.drawImage(appleImg,a.x,a.y,a.w,a.h);
+    });
+
+    items.forEach(i=>{
+        ctx.drawImage(bombImg,i.x,i.y,i.w,i.h);
+    });
+
+    ctx.fillStyle="orange";
+    bullets.forEach(b=>{
+        ctx.fillRect(b.x,b.y,b.w,b.h);
+    });
+
+    ctx.fillStyle="#fff";
+    ctx.font="18px Arial";
+    ctx.fillText("Skor: "+score,20,30);
+    ctx.fillText("❤️".repeat(lives)+" 🤍".repeat(MAX_LIVES-lives),20,60);
+    if (canShoot) ctx.fillText("🔥 Ammo: "+ammo,20,85);
+
+    if (gameOver) {
+        ctx.fillStyle="red";
+        ctx.font="40px Arial";
+        ctx.fillText("OYUN BİTTİ",330,160);
+        ctx.font="20px Arial";
+        ctx.fillText("R → Yeniden Başla",350,195);
+    }
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
